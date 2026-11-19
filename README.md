@@ -42,7 +42,7 @@ The mixed feature matrix standardizes minute and season-start year and one-hot e
 - [x] Original-space distributions and parallel coordinates, plus labeled 2D projections and computed comparison.
 - [x] Linked selection by immutable `goal_id`, filters, hover details, original feature comparison, detail table, and reset.
 - [x] Editable peer evaluation template; students submit their own evaluation separately.
-- [x] Report sections on provenance, methodology, interpretation, limitations, conclusion, and reproducibility.
+- [x] Report sections on introduction, provenance, methodology, interpretation, prompt strategy, limitations, conclusion, and reproducibility.
 - [x] Tests for parsing, feature preparation, PCA/t-SNE shapes, ID alignment, and all nine bonus subspaces.
 - [x] Approved bonus: interactive 3x3 PCA context projection matrix; see `bonus_extension.md` for method and simplifications.
 
