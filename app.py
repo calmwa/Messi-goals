@@ -60,32 +60,49 @@ hover = ["goal_id", "Season", "Opponent", "Competition", "Minute", "Type", "Venu
 def get_subspace_matrix(data):
     return subspace_projection_matrix(data)
 
-with st.expander("Approved bonus: context projection matrix", expanded=False):
-    st.markdown("Each cell applies PCA to one context group (diagonal) or a pair of groups (off diagonal). **Click a cell label to enlarge that view.** Selected goal IDs stay highlighted here and in the main PCA, t-SNE, feature views, and table. This is a simplified matrix and does not implement the projection tree.")
+def activate_subspace(key):
+    st.session_state.active_subspace = key
+
+with st.expander("Approved bonus: context projection matrix", expanded=True):
+    st.markdown("Each cell applies PCA to one context group (diagonal) or a pair of groups (off diagonal). Click a cell label or any point in its small plot. The enlarged view appears above the matrix. Your selected goal IDs stay highlighted here and in the main dashboard views.")
     matrix_coords = get_subspace_matrix(show)
     groups = list(dict.fromkeys([key[0] for key in matrix_coords]))
     if "active_subspace" not in st.session_state or st.session_state.active_subspace not in matrix_coords:
         st.session_state.active_subspace = (groups[0], groups[0])
-    for row_group in groups:
-        grid = st.columns(len(groups))
-        for col_index, col_group in enumerate(groups):
-            key = (row_group, col_group)
-            title = f"{row_group} × {col_group}"
-            with grid[col_index]:
-                if st.button(title, key=f"subspace_{groups.index(row_group)}_{col_index}", use_container_width=True):
-                    st.session_state.active_subspace = key
-                cell = matrix_coords[key].merge(show[["goal_id", "selection", "Season", "Opponent", "Competition", "Minute", "Type"]], on="goal_id", how="inner")
-                fig = px.scatter(cell, x="PC1", y="PC2", color="selection",
-                                 color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"},
-                                 hover_data=["goal_id", "Season", "Opponent", "Competition", "Minute", "Type"])
-                fig.update_layout(height=190, margin=dict(l=4, r=4, t=4, b=4), showlegend=False)
-                st.plotly_chart(fig, use_container_width=True, key=f"subspace_plot_{groups.index(row_group)}_{col_index}")
+
     active = st.session_state.active_subspace
-    st.markdown(f"#### Enlarged cell: {active[0]} × {active[1]}")
+    st.markdown(f"#### Enlarged cell: {active[0]} x {active[1]}")
     enlarged = matrix_coords[active].merge(show[["goal_id", "selection", *[col for col in hover if col != "goal_id"]]], on="goal_id", how="inner")
     fig = px.scatter(enlarged, x="PC1", y="PC2", color="selection",
                      color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"}, hover_data=hover)
     st.plotly_chart(fig, use_container_width=True, key="enlarged_subspace")
+
+    st.markdown("#### All context pairs")
+    for row_group in groups:
+        grid = st.columns(len(groups))
+        for col_index, col_group in enumerate(groups):
+            key = (row_group, col_group)
+            title = f"{row_group} x {col_group}"
+            with grid[col_index]:
+                st.button(title, key=f"subspace_{groups.index(row_group)}_{col_index}",
+                          use_container_width=True, on_click=activate_subspace, args=(key,))
+                cell = matrix_coords[key].merge(show[["goal_id", "selection", "Season", "Opponent", "Competition", "Minute", "Type"]], on="goal_id", how="inner")
+                fig = px.scatter(cell, x="PC1", y="PC2", color="selection",
+                                 color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"},
+                                 hover_data=["goal_id", "Season", "Opponent", "Competition", "Minute", "Type"],
+                                 custom_data=["goal_id"])
+                fig.update_layout(height=190, margin=dict(l=4, r=4, t=4, b=4), showlegend=False)
+                event = st.plotly_chart(fig, use_container_width=True,
+                                        key=f"subspace_plot_{groups.index(row_group)}_{col_index}",
+                                        on_select="rerun", selection_mode="points")
+                points = event.selection.points
+                signature = tuple(point.get("point_index", point.get("point_number")) for point in points)
+                signature_key = f"subspace_signature_{groups.index(row_group)}_{col_index}"
+                previous_signature = st.session_state.get(signature_key, ())
+                st.session_state[signature_key] = signature
+                if signature and signature != previous_signature:
+                    st.session_state.active_subspace = key
+                    st.rerun()
 
 c1, c2 = st.columns(2)
 with c1:
