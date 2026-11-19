@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="Messi Goals · Dimension Reduction", layout="wide")
 st.title("Messi’s goals in context")
 st.caption("Linked views of goal records. Select IDs once and the same goals highlight in both projections and original feature views.")
+st.info("**Quick guide:** Use the sidebar to filter by season, competition, goal type, or venue. Select one or more goal IDs to highlight those records in every view. Use Reset selection to clear them. Expand the bonus matrix to compare context subspaces.")
 
 @st.cache_data(show_spinner="Preparing the feature space and projections…")
 def get_data():
@@ -17,13 +18,24 @@ def get_data():
     coords, metrics = project(matrix, clean)
     return clean, coords, metrics
 
-df, coords, metrics = get_data()
+try:
+    df, coords, metrics = get_data()
+except FileNotFoundError:
+    st.error("The goal data file could not be found. From the project folder, check that `data/messi_goals.csv` is present.")
+    st.code("streamlit run app.py")
+    st.stop()
+except Exception as exc:
+    st.error("The dashboard could not prepare the data. Check that the CSV is unchanged and install the packages listed in requirements.txt.")
+    with st.expander("Technical details"):
+        st.code(f"{type(exc).__name__}: {exc}")
+    st.stop()
 with st.sidebar:
     st.header("Filter goals")
-    seasons = st.multiselect("Season", sorted(df.Season.dropna().unique()))
-    competitions = st.multiselect("Competition", sorted(df.Competition.dropna().unique()))
-    goal_types = st.multiselect("Goal type", sorted(df.Type.dropna().unique()))
-    venues = st.multiselect("Venue", sorted(df.Venue.dropna().unique()))
+    st.caption("Leave a filter empty to include every value.")
+    seasons = st.multiselect("Season", sorted(df.Season.dropna().unique()), help="Show goals from selected seasons.")
+    competitions = st.multiselect("Competition", sorted(df.Competition.dropna().unique()), help="Limit the dashboard to selected competitions.")
+    goal_types = st.multiselect("Goal type", sorted(df.Type.dropna().unique()), help="Filter by the recorded finishing type.")
+    venues = st.multiselect("Venue", sorted(df.Venue.dropna().unique()), help="H means home and A means away.")
     st.button("Reset selection", on_click=lambda: st.session_state.update(selected_ids=[]))
 
 mask = pd.Series(True, index=df.index)
@@ -31,12 +43,15 @@ for col, values in [("Season", seasons), ("Competition", competitions), ("Type",
     if values:
         mask &= df[col].isin(values)
 filtered = coords.loc[mask].copy()
+if filtered.empty:
+    st.warning("No goals match these filters. Clear one or more sidebar filters to see records again.")
+    st.stop()
 valid_ids = set(filtered.goal_id)
 if "selected_ids" not in st.session_state:
     st.session_state.selected_ids = []
 st.session_state.selected_ids = [x for x in st.session_state.selected_ids if x in valid_ids]
 labels = {r.goal_id: f"{r.goal_id} · {r.Season} · {r.Opponent} · {r.Minute}′" for r in filtered.itertuples()}
-selected = st.multiselect("Select goals to link across every view", options=list(labels), format_func=lambda x: labels.get(x, x), key="selected_ids")
+selected = st.multiselect("Select goals to link across every view", options=list(labels), format_func=lambda x: labels.get(x, x), key="selected_ids", help="Start typing an ID, season, or opponent. Choose multiple goals to highlight them together.")
 show = filtered.copy()
 show["selection"] = show.goal_id.map(lambda x: "Selected" if x in selected else "Other")
 hover = ["goal_id", "Season", "Opponent", "Competition", "Minute", "Type", "Venue", "Club", "Playing_Position", "Goal_assist"]
@@ -46,7 +61,7 @@ def get_subspace_matrix(data):
     return subspace_projection_matrix(data)
 
 with st.expander("Approved bonus: context projection matrix", expanded=False):
-    st.markdown("Each cell applies PCA to one context group (diagonal) or a pair of groups (off diagonal). This simplified matrix follows the paper's subspace comparison idea; it does not implement the projection tree. Select any cell to enlarge it. The same selected `goal_id` values stay highlighted here and in the main PCA, t-SNE, feature views, and table.")
+    st.markdown("Each cell applies PCA to one context group (diagonal) or a pair of groups (off diagonal). **Click a cell label to enlarge that view.** Selected goal IDs stay highlighted here and in the main PCA, t-SNE, feature views, and table. This is a simplified matrix and does not implement the projection tree.")
     matrix_coords = get_subspace_matrix(show)
     groups = list(dict.fromkeys([key[0] for key in matrix_coords]))
     if "active_subspace" not in st.session_state or st.session_state.active_subspace not in matrix_coords:

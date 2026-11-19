@@ -39,7 +39,11 @@ def subspace_projection_matrix(data: pd.DataFrame):
             key = (row_group, col_group)
             blocks = [encoded[row_group]] if row_i == col_i else [encoded[row_group], encoded[col_group]]
             matrix = np.column_stack(blocks)
-            projection = PCA(n_components=2, random_state=42).fit_transform(matrix)
+            if matrix.shape[0] < 2:
+                # A single filtered record has no estimable variance direction.
+                projection = np.zeros((matrix.shape[0], 2))
+            else:
+                projection = PCA(n_components=2, random_state=42).fit_transform(matrix)
             result[key] = pd.DataFrame({"goal_id": data["goal_id"].to_numpy(),
                                         "PC1": projection[:, 0], "PC2": projection[:, 1]})
     return result
