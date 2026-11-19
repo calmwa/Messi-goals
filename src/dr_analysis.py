@@ -3,6 +3,46 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE, trustworthiness
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+
+SUBSPACE_GROUPS = {
+    "Match context": {"categorical": ["Competition", "Venue", "Opponent"], "numeric": []},
+    "Goal context": {"categorical": ["Type", "Playing_Position"], "numeric": ["minute_num"]},
+    "Career context": {"categorical": ["Club"], "numeric": ["season_start"]},
+}
+
+
+def subspace_projection_matrix(data: pd.DataFrame):
+    """Return 3x3 PCA projections for pairwise context subspaces, aligned by goal_id.
+
+    Each context block is separately scaled/one-hot encoded. A cell projects the
+    union of its row and column blocks (diagonal cells use one block). This is a
+    small, fixed-matrix adaptation, not an implementation of the paper's tree.
+    """
+    encoded = {}
+    for group, spec in SUBSPACE_GROUPS.items():
+        parts = []
+        if spec["numeric"]:
+            values = data[spec["numeric"]].apply(pd.to_numeric, errors="coerce")
+            values = values.fillna(values.median()).fillna(0)
+            parts.append(StandardScaler().fit_transform(values))
+        if spec["categorical"]:
+            values = data[spec["categorical"]].fillna("Unknown").astype(str)
+            parts.append(OneHotEncoder(handle_unknown="ignore", min_frequency=5,
+                                       sparse_output=False).fit_transform(values))
+        encoded[group] = np.column_stack(parts)
+    result = {}
+    names = list(SUBSPACE_GROUPS)
+    for row_i, row_group in enumerate(names):
+        for col_i, col_group in enumerate(names):
+            key = (row_group, col_group)
+            blocks = [encoded[row_group]] if row_i == col_i else [encoded[row_group], encoded[col_group]]
+            matrix = np.column_stack(blocks)
+            projection = PCA(n_components=2, random_state=42).fit_transform(matrix)
+            result[key] = pd.DataFrame({"goal_id": data["goal_id"].to_numpy(),
+                                        "PC1": projection[:, 0], "PC2": projection[:, 1]})
+    return result
 
 
 def project(matrix, metadata: pd.DataFrame, random_state: int = 42):

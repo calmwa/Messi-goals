@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from src.data_processing import load_goals, parse_date, parse_minute, parse_score, parse_season, prepare_features
-from src.dr_analysis import project
+from src.dr_analysis import project, subspace_projection_matrix
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "messi_goals.csv"
 
@@ -28,3 +28,12 @@ def test_feature_projection_alignment():
     assert coords[["PC1", "PC2", "TSNE1", "TSNE2"]].shape == (len(clean), 4)
     assert metrics["tsne_perplexity"] < len(clean)
     assert 0 <= metrics["tsne_trustworthiness"] <= 1
+
+def test_subspace_matrix_has_linked_ids():
+    raw = load_goals(DATA)
+    clean, _, _ = prepare_features(raw)
+    cells = subspace_projection_matrix(clean)
+    assert len(cells) == 9
+    for cell in cells.values():
+        assert cell.goal_id.tolist() == clean.goal_id.tolist()
+        assert cell[["PC1", "PC2"]].shape == (len(clean), 2)

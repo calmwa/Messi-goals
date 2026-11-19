@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from src.data_processing import load_goals, prepare_features
-from src.dr_analysis import project
+from src.dr_analysis import project, subspace_projection_matrix
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="Messi Goals · Dimension Reduction", layout="wide")
@@ -40,6 +40,38 @@ selected = st.multiselect("Select goals to link across every view", options=list
 show = filtered.copy()
 show["selection"] = show.goal_id.map(lambda x: "Selected" if x in selected else "Other")
 hover = ["goal_id", "Season", "Opponent", "Competition", "Minute", "Type", "Venue", "Club", "Playing_Position", "Goal_assist"]
+
+@st.cache_data(show_spinner="Building context subspace matrix…")
+def get_subspace_matrix(data):
+    return subspace_projection_matrix(data)
+
+with st.expander("Approved bonus: context projection matrix", expanded=False):
+    st.markdown("Each cell applies PCA to one context group (diagonal) or a pair of groups (off diagonal). This simplified matrix follows the paper's subspace comparison idea; it does not implement the projection tree. Select any cell to enlarge it. The same selected `goal_id` values stay highlighted here and in the main PCA, t-SNE, feature views, and table.")
+    matrix_coords = get_subspace_matrix(show)
+    groups = list(dict.fromkeys([key[0] for key in matrix_coords]))
+    if "active_subspace" not in st.session_state or st.session_state.active_subspace not in matrix_coords:
+        st.session_state.active_subspace = (groups[0], groups[0])
+    for row_group in groups:
+        grid = st.columns(len(groups))
+        for col_index, col_group in enumerate(groups):
+            key = (row_group, col_group)
+            title = f"{row_group} × {col_group}"
+            with grid[col_index]:
+                if st.button(title, key=f"subspace_{groups.index(row_group)}_{col_index}", use_container_width=True):
+                    st.session_state.active_subspace = key
+                cell = matrix_coords[key].merge(show[["goal_id", "selection", "Season", "Opponent", "Competition", "Minute", "Type"]], on="goal_id", how="inner")
+                fig = px.scatter(cell, x="PC1", y="PC2", color="selection",
+                                 color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"},
+                                 hover_data=["goal_id", "Season", "Opponent", "Competition", "Minute", "Type"])
+                fig.update_layout(height=190, margin=dict(l=4, r=4, t=4, b=4), showlegend=False)
+                st.plotly_chart(fig, use_container_width=True, key=f"subspace_plot_{groups.index(row_group)}_{col_index}")
+    active = st.session_state.active_subspace
+    st.markdown(f"#### Enlarged cell: {active[0]} × {active[1]}")
+    enlarged = matrix_coords[active].merge(show[["goal_id", "selection", *[col for col in hover if col != "goal_id"]]], on="goal_id", how="inner")
+    fig = px.scatter(enlarged, x="PC1", y="PC2", color="selection",
+                     color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"}, hover_data=hover)
+    st.plotly_chart(fig, use_container_width=True, key="enlarged_subspace")
+
 c1, c2 = st.columns(2)
 with c1:
     fig = px.scatter(show, x="PC1", y="PC2", color="selection", color_discrete_map={"Selected":"#e63946", "Other":"#a8b3c4"}, hover_data=hover, title=f"PCA · first two components explain {metrics['pca_variance_total']:.1%}")
