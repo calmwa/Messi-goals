@@ -83,6 +83,10 @@ def prepare_features(df: pd.DataFrame):
     work["minute_num"] = work["Minute"].map(parse_minute)
     work["season_start"] = work["Season"].map(parse_season)
     work["date_parsed"] = work["Date"].map(parse_date)
+    for source_col, prefix in [("Result", "result_score"), ("At_score", "score_at_goal")]:
+        parsed_scores = work[source_col].map(parse_score)
+        work[f"{prefix}_1"] = parsed_scores.map(lambda pair: pair[0])
+        work[f"{prefix}_2"] = parsed_scores.map(lambda pair: pair[1])
     categorical = ["Competition", "Venue", "Playing_Position", "Type", "Opponent"]
     numerical = ["minute_num", "season_start"]
     for col in categorical:
